@@ -1,0 +1,6 @@
+1. Create federation web application.
+2. All files must be only in "jans-federation-vibe" folder (other folders must be without any changes or modifications)
+3. It must be based on java programming language. Build system is maven. Parent pom must be taken from "jans-bom" folder.
+4. You can use "jans-auth-server" as example.
+5. IMPORTANT: Application must implement specification https://openid.net/specs/openid-federation-1_0.html
+6. For encryption logic please use nimbus

@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  federation:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    container_name: jans-federation-vibe
+    ports:
+      - "8080:8080"
+    environment:
+      - JAVA_OPTS=-Xmx512m -Xms256m
+      - PORT=8080
+    networks:
+      - federation-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/federation/metadata"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  federation-network:
+    driver: bridge

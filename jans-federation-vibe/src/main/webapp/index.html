@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jans Federation Vibe</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .endpoint {
+            background-color: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+        .method {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .url {
+            font-family: monospace;
+            background-color: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .description {
+            color: #6c757d;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Jans Federation Vibe</h1>
+        <p>OpenID Federation 1.0 implementation for Janssen</p>
+        
+        <h2>Available Endpoints</h2>
+        
+        <div class="endpoint">
+            <div class="method">GET</div>
+            <div class="url">/.well-known/openid-federation</div>
+            <div class="description">Get entity configuration for a given issuer</div>
+        </div>
+        
+        <div class="endpoint">
+            <div class="method">GET</div>
+            <div class="url">/federation/metadata</div>
+            <div class="description">Get federation metadata</div>
+        </div>
+        
+        <div class="endpoint">
+            <div class="method">POST</div>
+            <div class="url">/federation/validate-trust-chain</div>
+            <div class="description">Validate trust chain for an entity</div>
+        </div>
+        
+        <div class="endpoint">
+            <div class="method">GET</div>
+            <div class="url">/federation/trust-marks</div>
+            <div class="description">Get trust marks for an entity</div>
+        </div>
+        
+        <div class="endpoint">
+            <div class="method">POST</div>
+            <div class="url">/federation/issue-trust-mark</div>
+            <div class="description">Issue a trust mark for an entity</div>
+        </div>
+        
+        <div class="endpoint">
+            <div class="method">GET</div>
+            <div class="url">/federation/trust-mark-issuers</div>
+            <div class="description">Get trust mark issuers</div>
+        </div>
+        
+        <h2>OpenID Federation 1.0 Specification</h2>
+        <p>This implementation follows the <a href="https://openid.net/specs/openid-federation-1_0.html" target="_blank">OpenID Federation 1.0 specification</a>.</p>
+        
+        <h2>Features</h2>
+        <ul>
+            <li>Entity Configuration management</li>
+            <li>Trust Mark issuance and validation</li>
+            <li>Trust Chain validation</li>
+            <li>Federation Metadata</li>
+            <li>JWT signing and verification using Nimbus JOSE JWT</li>
+        </ul>
+    </div>
+</body>
+</html>
