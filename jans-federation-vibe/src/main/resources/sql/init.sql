@@ -97,3 +97,4 @@ CREATE INDEX IF NOT EXISTS idx_trust_mark_issuers_subject ON trust_mark_issuers(
 CREATE INDEX IF NOT EXISTS idx_trust_mark_profiles_profile_id ON trust_mark_profiles(profile_id);
 
 CREATE INDEX IF NOT EXISTS idx_federation_metadata_issuer ON federation_metadata(issuer);
+

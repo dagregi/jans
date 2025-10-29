@@ -38,3 +38,4 @@ psql -h postgres -U federation -d federation -c "SELECT * FROM federation_stats;
 
 echo ""
 echo "🎉 Database is ready for use!"
+

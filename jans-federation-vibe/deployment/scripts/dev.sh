@@ -41,3 +41,4 @@ echo "  mvn clean package -DskipTests && docker-compose restart federation"
 echo ""
 echo "To stop development environment:"
 echo "  docker-compose down"
+

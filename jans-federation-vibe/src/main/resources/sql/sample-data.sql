@@ -100,3 +100,4 @@ VALUES
      'advanced-trust', 'https://trustmark.example.com/trustmarks/advanced', 'https://trustmark.example.com/trustmarks/advanced',
      '{"level": "advanced", "issued_by": "https://trustmark.example.com", "valid_until": "' || (NOW() + INTERVAL '6 months')::text || '"}')
 ON CONFLICT DO NOTHING;
+

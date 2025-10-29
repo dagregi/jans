@@ -1,18 +1,51 @@
 #!/bin/bash
 
 # Start script for Jans Federation Vibe
-# This script builds and starts the federation application
+# This script builds and starts a federation entity (node)
+#
+# Usage: ./start.sh [node_name]
+# Example: ./start.sh node1
+#          ./start.sh node2
 
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-PID_FILE="$PROJECT_DIR/.federation.pid"
-LOG_FILE="/tmp/federation-server.log"
+
+# Get node name from argument (default: node1)
+NODE_NAME="${1:-node1}"
+
+# Derive port from node name
+# Support both numbered nodes (node1, node2) and named entities (eduGAIN, SWAMID, etc.)
+NODE_NAME_LOWER=$(echo "$NODE_NAME" | tr '[:upper:]' '[:lower:]')
+
+case "$NODE_NAME_LOWER" in
+    edugain) PORT=8080 ;;
+    swamid) PORT=8081 ;;
+    umu) PORT=8082 ;;
+    op-umu|opumu) PORT=8083 ;;
+    ligo) PORT=8084 ;;
+    *)
+        # Handle nodeN format
+        if [[ $NODE_NAME =~ ^node([0-9]+)$ ]]; then
+            NODE_NUM="${BASH_REMATCH[1]}"
+            PORT=$((8080 + NODE_NUM - 1))
+        else
+            echo "❌ Error: Unknown node name: $NODE_NAME"
+            echo "Supported: node1, node2, node3, ... or eduGAIN, SWAMID, UMU, op-umu, LIGO"
+            exit 1
+        fi
+        ;;
+esac
+
+PID_FILE="$PROJECT_DIR/.federation-${NODE_NAME}.pid"
+LOG_FILE="/tmp/federation-${NODE_NAME}.log"
 
 echo "========================================="
-echo "Starting Jans Federation Vibe"
+echo "Starting Jans Federation Entity"
 echo "========================================="
+echo "Node Name: $NODE_NAME"
+echo "Port: $PORT"
 echo ""
 
 # Check if Java is available
@@ -32,47 +65,52 @@ fi
 
 echo "✓ Java version: $(java -version 2>&1 | head -n 1 | cut -d'"' -f2)"
 
-# Check if already running
+# Check if this node is already running
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
     if ps -p $PID > /dev/null 2>&1; then
-        echo "⚠️  Federation server is already running (PID: $PID)"
-        echo "Use './deployment/scripts/stop.sh' to stop it first"
+        echo "⚠️  Entity '$NODE_NAME' is already running (PID: $PID, Port: $PORT)"
+        echo "Use './deployment/scripts/stop.sh $NODE_NAME' to stop it first"
         exit 1
     else
-        echo "⚠️  Removing stale PID file"
+        echo "⚠️  Removing stale PID file for $NODE_NAME"
         rm -f "$PID_FILE"
     fi
 fi
 
-# Build the application
-echo ""
-echo "Building application..."
-cd "$PROJECT_DIR"
-
-if ! mvn clean package -DskipTests > /dev/null 2>&1; then
-    echo "❌ Build failed. Running with verbose output:"
-    mvn clean package -DskipTests
+# Check if port is already in use
+if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "❌ Error: Port $PORT is already in use"
+    echo "Another process is using this port. Please stop it first."
+    lsof -i :$PORT | head -2
     exit 1
 fi
 
-echo "✓ Build successful"
-
-# Find the executable JAR
+# Build the application if needed
 JAR_FILE="$PROJECT_DIR/target/jans-federation-vibe-1.13.0-executable.jar"
 
 if [ ! -f "$JAR_FILE" ]; then
-    echo "❌ Error: Executable JAR not found at $JAR_FILE"
-    exit 1
+    echo ""
+    echo "Building application..."
+    cd "$PROJECT_DIR"
+    
+    if ! mvn clean package -DskipTests > /dev/null 2>&1; then
+        echo "❌ Build failed. Running with verbose output:"
+        mvn clean package -DskipTests
+        exit 1
+    fi
+    
+    echo "✓ Build successful"
+else
+    echo "✓ Using existing build: $(basename $JAR_FILE)"
 fi
-
-echo "✓ Executable JAR found: $(basename $JAR_FILE)"
 
 # Start the application
 echo ""
-echo "Starting federation server..."
+echo "Starting entity '$NODE_NAME' on port $PORT..."
 
-java -jar "$JAR_FILE" > "$LOG_FILE" 2>&1 &
+# Set PORT environment variable and pass node name as argument
+PORT=$PORT java -jar "$JAR_FILE" "$NODE_NAME" > "$LOG_FILE" 2>&1 &
 SERVER_PID=$!
 
 # Save PID
@@ -88,7 +126,7 @@ MAX_WAIT=30
 WAIT_COUNT=0
 
 while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
-    if curl -s http://localhost:8080/federation/metadata > /dev/null 2>&1; then
+    if curl -s http://localhost:$PORT/.well-known/openid-federation > /dev/null 2>&1; then
         echo "✓ Server is ready!"
         break
     fi
@@ -123,20 +161,24 @@ fi
 # Display success message
 echo ""
 echo "========================================="
-echo "✅ Jans Federation Vibe Started!"
+echo "✅ Federation Entity '$NODE_NAME' Started!"
 echo "========================================="
 echo ""
-echo "🌐 Application URL: http://localhost:8080"
-echo "📋 Federation Metadata: http://localhost:8080/federation/metadata"
-echo "🔍 Health Check: http://localhost:8080/database/health"
-echo "📊 Database Stats: http://localhost:8080/database/stats"
+echo "📌 Node Name: $NODE_NAME"
+echo "🆔 Entity ID: https://${NODE_NAME}.example.com"
+echo "🌐 Base URL: http://localhost:$PORT"
+echo "📋 Entity Config: http://localhost:$PORT/.well-known/openid-federation"
+echo "🔧 Management API: http://localhost:$PORT/manage"
 echo ""
-echo "📝 PID File: $PID_FILE"
-echo "📄 Log File: $LOG_FILE"
+echo "📝 PID: $SERVER_PID (saved to $PID_FILE)"
+echo "📄 Logs: $LOG_FILE"
 echo ""
 echo "Commands:"
-echo "  Status:  ./deployment/scripts/status.sh"
-echo "  Stop:    ./deployment/scripts/stop.sh"
-echo "  Logs:    tail -f $LOG_FILE"
-echo "  Test:    mvn test"
+echo "  Status: ./deployment/scripts/status.sh $NODE_NAME"
+echo "  Stop:   ./deployment/scripts/stop.sh $NODE_NAME"
+echo "  Logs:   tail -f $LOG_FILE"
+echo ""
+echo "To start another entity:"
+echo "  ./deployment/scripts/start.sh node2  # Will use port 8081"
+echo "  ./deployment/scripts/start.sh node3  # Will use port 8082"
 echo ""

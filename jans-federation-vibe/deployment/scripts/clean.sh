@@ -34,3 +34,4 @@ echo "  docker system prune -a"
 echo ""
 echo "To rebuild the application:"
 echo "  ./deployment/scripts/build.sh"
+

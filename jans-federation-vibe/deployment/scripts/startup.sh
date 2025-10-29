@@ -19,3 +19,4 @@ fi
 # Start Tomcat
 echo "🌐 Starting Tomcat application server..."
 exec catalina.sh run
+

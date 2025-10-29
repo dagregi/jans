@@ -68,3 +68,4 @@ echo "🔍 You can test the API endpoints:"
 echo "  curl http://localhost:8080/federation/metadata"
 echo "  curl http://localhost:8080/database/stats"
 echo "  curl http://localhost:8080/database/health"
+

@@ -11,9 +11,11 @@ import org.junit.jupiter.api.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nimbusds.jwt.SignedJWT;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /**
  * Comprehensive Integration Tests for OpenID Federation 1.0 Implementation
@@ -133,15 +135,14 @@ public class OpenIDFederation10IntegrationTest {
     public void test03_EntityConfigurationDiscovery() throws Exception {
         logTestHeader("Test 3: Entity Configuration Discovery (Section 3.1)");
         
-        String[] testEntities = {
-            "https://op.example.com",
-            "https://rp.example.com",
-            "https://test-op.example.com"
+        // Test the running node1 entity
+        String[] testUrls = {
+            BASE_URL  // node1 on port 8080
         };
         
-        for (String entityId : testEntities) {
-            log("Testing Entity: " + entityId);
-            String url = BASE_URL + "/.well-known/openid-federation?iss=" + entityId;
+        for (String baseUrl : testUrls) {
+            log("Testing Entity at: " + baseUrl);
+            String url = baseUrl + "/.well-known/openid-federation";
             log("Request: GET " + url);
             
             HttpGet request = new HttpGet(url);
@@ -154,25 +155,24 @@ public class OpenIDFederation10IntegrationTest {
                 
                 Assertions.assertEquals(200, statusCode, "Entity configuration should return 200 OK");
                 
-                JsonNode json = objectMapper.readTree(responseBody);
+                JsonNode json = parseJWT(responseBody);
                 
                 // Validate required fields per OpenID Federation 1.0 Section 3.1
-                String[] requiredFields = {"iss", "sub", "aud", "exp", "iat", "jti", "jwks"};
+                // Note: aud is optional for Entity Configuration
+                String[] requiredFields = {"iss", "sub", "exp", "iat", "jti", "jwks"};
                 for (String field : requiredFields) {
                     Assertions.assertTrue(json.has(field), 
                         "Entity configuration must contain '" + field + "' field (Section 3.1)");
                 }
                 
-                Assertions.assertEquals(entityId, json.get("iss").asText(), 
-                    "'iss' must match the requested entity ID");
+                String entityId = json.get("iss").asText();
                 Assertions.assertEquals(entityId, json.get("sub").asText(), 
-                    "'sub' must match the requested entity ID");
+                    "'sub' must equal 'iss' for Entity Configuration (self-signed)");
                 
                 log("✓ Entity ID (iss): " + json.get("iss").asText());
                 log("✓ Subject (sub): " + json.get("sub").asText());
-                log("✓ Audience (aud): " + json.get("aud").asText());
                 log("✓ JWT ID (jti): " + json.get("jti").asText());
-                log("✓ All required fields present");
+                log("✓ All required fields present (iss, sub, exp, iat, jti, jwks)");
                 log("");
             }
         }
@@ -525,11 +525,37 @@ public class OpenIDFederation10IntegrationTest {
     
     private static String formatJson(String json) {
         try {
-            Object jsonObject = objectMapper.readValue(json, Object.class);
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonObject);
+            // Check if it's a JWT
+            if (json.startsWith("eyJ")) {
+                // Parse JWT and format claims
+                SignedJWT signedJWT = SignedJWT.parse(json);
+                Map<String, Object> claims = signedJWT.getJWTClaimsSet().getClaims();
+                return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(claims);
+            } else {
+                // Regular JSON
+                Object jsonObject = objectMapper.readValue(json, Object.class);
+                return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonObject);
+            }
         } catch (Exception e) {
             return json;
         }
     }
+    
+    /**
+     * Parse JWT and extract claims as JsonNode
+     */
+    private static JsonNode parseJWT(String jwtString) throws Exception {
+        // Check if it's a JWT (starts with eyJ which is base64 for {"
+        if (jwtString.startsWith("eyJ")) {
+            SignedJWT signedJWT = SignedJWT.parse(jwtString);
+            Map<String, Object> claims = signedJWT.getJWTClaimsSet().getClaims();
+            String claimsJson = objectMapper.writeValueAsString(claims);
+            return objectMapper.readTree(claimsJson);
+        } else {
+            // Plain JSON
+            return objectMapper.readTree(jwtString);
+        }
+    }
 }
+
 

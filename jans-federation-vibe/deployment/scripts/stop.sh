@@ -1,35 +1,42 @@
 #!/bin/bash
 
 # Stop script for Jans Federation Vibe
-# This script stops the federation application
+# This script stops a specific federation entity (node)
+#
+# Usage: ./stop.sh [node_name]
+# Example: ./stop.sh node1
+#          ./stop.sh node2
 
 set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-PID_FILE="$PROJECT_DIR/.federation.pid"
+
+# Get node name from argument (default: node1)
+NODE_NAME="${1:-node1}"
+
+PID_FILE="$PROJECT_DIR/.federation-${NODE_NAME}.pid"
 
 echo "========================================="
-echo "Stopping Jans Federation Vibe"
+echo "Stopping Federation Entity '$NODE_NAME'"
 echo "========================================="
 echo ""
 
 # Check if PID file exists
 if [ ! -f "$PID_FILE" ]; then
-    echo "⚠️  PID file not found. Server may not be running."
-    
-    # Try to find and kill the process anyway
-    PIDS=$(ps aux | grep "jans-federation-vibe.*\.jar" | grep -v grep | awk '{print $2}')
-    
-    if [ -n "$PIDS" ]; then
-        echo "Found running federation processes: $PIDS"
-        echo "Stopping them..."
-        for PID in $PIDS; do
-            kill $PID 2>/dev/null && echo "✓ Stopped process $PID" || echo "⚠️  Failed to stop process $PID"
-        done
-    else
-        echo "No federation processes found running."
-    fi
+    echo "⚠️  PID file not found for '$NODE_NAME'"
+    echo "Entity may not be running."
+    echo ""
+    echo "Active federation entities:"
+    for pidfile in "$PROJECT_DIR"/.federation-*.pid; do
+        if [ -f "$pidfile" ]; then
+            name=$(basename "$pidfile" | sed 's/.federation-//;s/.pid//')
+            pid=$(cat "$pidfile")
+            if ps -p $pid > /dev/null 2>&1; then
+                echo "  - $name (PID: $pid)"
+            fi
+        fi
+    done
     exit 0
 fi
 
@@ -44,7 +51,7 @@ if ! ps -p $PID > /dev/null 2>&1; then
 fi
 
 # Stop the process
-echo "Stopping federation server (PID: $PID)..."
+echo "Stopping entity '$NODE_NAME' (PID: $PID)..."
 
 kill $PID 2>/dev/null
 
@@ -54,11 +61,11 @@ MAX_WAIT=10
 
 while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
     if ! ps -p $PID > /dev/null 2>&1; then
-        echo "✓ Server stopped successfully"
+        echo "✓ Entity '$NODE_NAME' stopped successfully"
         rm -f "$PID_FILE"
         echo ""
         echo "========================================="
-        echo "✅ Jans Federation Vibe Stopped"
+        echo "✅ Federation Entity '$NODE_NAME' Stopped"
         echo "========================================="
         exit 0
     fi
@@ -72,14 +79,14 @@ echo "⚠️  Process did not stop gracefully, forcing shutdown..."
 kill -9 $PID 2>/dev/null
 
 if ! ps -p $PID > /dev/null 2>&1; then
-    echo "✓ Server force-stopped"
+    echo "✓ Entity '$NODE_NAME' force-stopped"
     rm -f "$PID_FILE"
 else
-    echo "❌ Failed to stop server process $PID"
+    echo "❌ Failed to stop process $PID"
     exit 1
 fi
 
 echo ""
 echo "========================================="
-echo "✅ Jans Federation Vibe Stopped"
+echo "✅ Federation Entity '$NODE_NAME' Stopped"
 echo "========================================="

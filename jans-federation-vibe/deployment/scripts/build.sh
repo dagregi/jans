@@ -24,3 +24,4 @@ echo "  docker run -p 8080:8080 jans-federation-vibe:latest"
 echo ""
 echo "Or use docker-compose:"
 echo "  docker-compose up -d"
+
