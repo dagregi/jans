@@ -26,7 +26,7 @@ public class EntityData {
     private Map<String, SubordinateEntity> subordinates;
     private List<String> authorityHints;
     private Map<String, Object> metadata;
-    private List<TrustMarkData> trustMarks;
+    private List<TrustMark> trustMarks;
     
     private EntityData() {
         this.subordinates = new ConcurrentHashMap<>();
@@ -110,12 +110,23 @@ public class EntityData {
         this.metadata = metadata;
     }
     
-    public List<TrustMarkData> getTrustMarks() {
+    public List<TrustMark> getTrustMarks() {
         return trustMarks;
     }
     
-    public void addTrustMark(TrustMarkData trustMark) {
+    public void addTrustMark(TrustMark trustMark) {
         this.trustMarks.add(trustMark);
+    }
+    
+    public TrustMark getTrustMarkById(String id) {
+        return trustMarks.stream()
+            .filter(tm -> tm.getId().equals(id))
+            .findFirst()
+            .orElse(null);
+    }
+    
+    public void removeTrustMark(String id) {
+        trustMarks.removeIf(tm -> tm.getId().equals(id));
     }
     
     /**
@@ -169,65 +180,6 @@ public class EntityData {
         }
     }
     
-    /**
-     * Trust Mark data
-     */
-    public static class TrustMarkData {
-        private String id;
-        private String issuer;
-        private String subject;
-        private String trustMarkId;
-        private long issuedAt;
-        private long expiresAt;
-        
-        public String getId() {
-            return id;
-        }
-        
-        public void setId(String id) {
-            this.id = id;
-        }
-        
-        public String getIssuer() {
-            return issuer;
-        }
-        
-        public void setIssuer(String issuer) {
-            this.issuer = issuer;
-        }
-        
-        public String getSubject() {
-            return subject;
-        }
-        
-        public void setSubject(String subject) {
-            this.subject = subject;
-        }
-        
-        public String getTrustMarkId() {
-            return trustMarkId;
-        }
-        
-        public void setTrustMarkId(String trustMarkId) {
-            this.trustMarkId = trustMarkId;
-        }
-        
-        public long getIssuedAt() {
-            return issuedAt;
-        }
-        
-        public void setIssuedAt(long issuedAt) {
-            this.issuedAt = issuedAt;
-        }
-        
-        public long getExpiresAt() {
-            return expiresAt;
-        }
-        
-        public void setExpiresAt(long expiresAt) {
-            this.expiresAt = expiresAt;
-        }
-    }
 }
 
 

@@ -90,8 +90,20 @@ public class WellKnownEndpoint {
             }
             
             // Trust marks - optional
+            // Note: In Entity Configuration, we include Trust Marks that are ABOUT this entity
+            // (issued by superior entities or Trust Mark Issuers)
+            // Format: array of signed Trust Mark JWTs
             if (entityData.getTrustMarks() != null && !entityData.getTrustMarks().isEmpty()) {
-                claims.put("trust_marks", entityData.getTrustMarks());
+                List<String> trustMarkJWTs = new ArrayList<>();
+                for (io.jans.federation.model.TrustMark tm : entityData.getTrustMarks()) {
+                    // Only include Trust Marks about THIS entity
+                    if (tm.getSubject().equals(entityData.getEntityId()) && tm.getSignedJWT() != null) {
+                        trustMarkJWTs.add(tm.getSignedJWT());
+                    }
+                }
+                if (!trustMarkJWTs.isEmpty()) {
+                    claims.put("trust_marks", trustMarkJWTs);
+                }
             }
             
             // Sign the Entity Statement

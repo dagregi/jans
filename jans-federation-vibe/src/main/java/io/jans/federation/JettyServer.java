@@ -100,12 +100,17 @@ public class JettyServer {
         }
         
         // Map specific node names to ports (Appendix A entities)
-        switch (nodeName.toLowerCase()) {
+        String lowerNodeName = nodeName.toLowerCase();
+        switch (lowerNodeName) {
             case "edugain": return 8080;
             case "swamid": return 8081;
             case "umu": return 8082;
-            case "op-umu": case "opumu": return 8083;
+            case "op-umu":
+            case "opumu": return 8083;
             case "ligo": return 8084;
+            default:
+                // Continue to next checks
+                break;
         }
         
         // Auto-assign ports based on node name
@@ -124,16 +129,18 @@ public class JettyServer {
     
     private static String getEntityId(String nodeName) {
         // Map specific node names to entity IDs (Appendix A entities)
-        switch (nodeName.toLowerCase()) {
+        String lowerNodeName = nodeName.toLowerCase();
+        switch (lowerNodeName) {
             case "edugain": return "https://edugain.geant.org";
             case "swamid": return "https://swamid.se";
             case "umu": return "https://umu.se";
-            case "op-umu": case "opumu": return "https://op.umu.se";
+            case "op-umu":
+            case "opumu": return "https://op.umu.se";
             case "ligo": return "https://ligo.example.org";
+            default:
+                // Default: node name to entity ID
+                return "https://" + nodeName + ".example.com";
         }
-        
-        // Default: node name to entity ID
-        return "https://" + nodeName + ".example.com";
     }
 }
 

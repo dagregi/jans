@@ -349,6 +349,243 @@ public class TrustChainResolver {
     }
     
     /**
+     * Validate Trust Marks in an Entity Configuration
+     * 
+     * Per OpenID Federation 1.0 Section 5:
+     * - Trust Marks are signed JWTs
+     * - Must be issued by an authorized Trust Mark Issuer
+     * - Signature must be verifiable using issuer's JWKS
+     * - Must not be expired
+     * - Subject must match the entity
+     * 
+     * @param entityConfig The Entity Configuration containing Trust Marks
+     * @param entityId The expected subject entity ID
+     * @param trustChainStatements List of statements in the trust chain (for issuer validation)
+     * @return List of validated Trust Marks
+     */
+    public List<TrustMarkValidationResult> validateTrustMarks(
+            JsonNode entityConfig, 
+            String entityId,
+            List<JsonNode> trustChainStatements) {
+        
+        List<TrustMarkValidationResult> results = new ArrayList<>();
+        
+        if (!entityConfig.has("trust_marks") || !entityConfig.get("trust_marks").isArray()) {
+            logger.info("  No Trust Marks found in Entity Configuration");
+            return results;
+        }
+        
+        logger.info("  Validating Trust Marks...");
+        int tmCount = 0;
+        
+        for (JsonNode tmNode : entityConfig.get("trust_marks")) {
+            tmCount++;
+            String trustMarkJWT = tmNode.asText();
+            logger.info("    Trust Mark #{}: {}", tmCount, 
+                trustMarkJWT.substring(0, Math.min(50, trustMarkJWT.length())) + "...");
+            
+            TrustMarkValidationResult result = validateSingleTrustMark(
+                trustMarkJWT, entityId, trustChainStatements);
+            results.add(result);
+            
+            if (result.isValid()) {
+                logger.info("      ✓ Trust Mark VALID: {}", result.getTrustMarkId());
+                logger.info("        Issuer: {}", result.getIssuer());
+            } else {
+                logger.warn("      ✗ Trust Mark INVALID: {}", result.getError());
+            }
+        }
+        
+        logger.info("  Trust Mark Validation Summary: {} total, {} valid, {} invalid",
+            results.size(),
+            results.stream().filter(TrustMarkValidationResult::isValid).count(),
+            results.stream().filter(r -> !r.isValid()).count());
+        
+        return results;
+    }
+    
+    /**
+     * Validate a single Trust Mark JWT
+     */
+    private TrustMarkValidationResult validateSingleTrustMark(
+            String trustMarkJWT,
+            String expectedSubject,
+            List<JsonNode> trustChainStatements) {
+        
+        TrustMarkValidationResult result = new TrustMarkValidationResult();
+        result.setTrustMarkJWT(trustMarkJWT);
+        
+        try {
+            // Parse the Trust Mark JWT
+            SignedJWT signedJWT = SignedJWT.parse(trustMarkJWT);
+            Map<String, Object> claims = signedJWT.getJWTClaimsSet().getClaims();
+            
+            String trustMarkId = (String) claims.get("id");
+            String issuer = (String) claims.get("iss");
+            String subject = (String) claims.get("sub");
+            long iat = claims.containsKey("iat") ? ((Number) claims.get("iat")).longValue() : 0;
+            Long exp = claims.containsKey("exp") ? ((Number) claims.get("exp")).longValue() : null;
+            
+            result.setTrustMarkId(trustMarkId);
+            result.setIssuer(issuer);
+            result.setSubject(subject);
+            result.setIssuedAt(iat);
+            result.setExpiresAt(exp);
+            
+            // Validation 1: Subject must match the entity
+            if (!subject.equals(expectedSubject)) {
+                result.setValid(false);
+                result.setError("Subject mismatch (expected: " + expectedSubject + ", got: " + subject + ")");
+                return result;
+            }
+            
+            // Validation 2: Check expiration
+            if (exp != null) {
+                long now = System.currentTimeMillis() / 1000;
+                if (now > exp) {
+                    result.setValid(false);
+                    result.setError("Trust Mark expired");
+                    return result;
+                }
+            }
+            
+            // Validation 3: Verify issuer is in the trust chain
+            boolean issuerInChain = trustChainStatements.stream()
+                .anyMatch(stmt -> stmt.has("iss") && stmt.get("iss").asText().equals(issuer));
+            
+            if (!issuerInChain) {
+                result.setValid(false);
+                result.setError("Trust Mark issuer not in trust chain: " + issuer);
+                return result;
+            }
+            
+            // Validation 4: Fetch issuer's JWKS and verify signature
+            JsonNode issuerConfig = findStatementByIssuer(trustChainStatements, issuer);
+            if (issuerConfig == null) {
+                result.setValid(false);
+                result.setError("Cannot find issuer's Entity Configuration in trust chain");
+                return result;
+            }
+            
+            if (!issuerConfig.has("jwks")) {
+                result.setValid(false);
+                result.setError("Issuer's Entity Configuration has no JWKS");
+                return result;
+            }
+            
+            // Extract JWKS and verify signature
+            Object jwksObj = issuerConfig.get("jwks");
+            String jwksJson = objectMapper.writeValueAsString(jwksObj);
+            JWKSet jwkSet = JWKSet.parse(jwksJson);
+            
+            boolean verified = JWTService.verifyEntityStatement(trustMarkJWT, jwkSet);
+            if (!verified) {
+                result.setValid(false);
+                result.setError("Trust Mark signature verification failed");
+                return result;
+            }
+            
+            // All validations passed
+            result.setValid(true);
+            
+        } catch (Exception e) {
+            result.setValid(false);
+            result.setError("Trust Mark validation error: " + e.getMessage());
+            logger.error("Error validating Trust Mark", e);
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Find a statement in the trust chain by issuer
+     */
+    private JsonNode findStatementByIssuer(List<JsonNode> statements, String issuer) {
+        return statements.stream()
+            .filter(stmt -> stmt.has("iss") && stmt.get("iss").asText().equals(issuer))
+            .findFirst()
+            .orElse(null);
+    }
+    
+    /**
+     * Result of Trust Mark validation
+     */
+    public static class TrustMarkValidationResult {
+        private String trustMarkJWT;
+        private String trustMarkId;
+        private String issuer;
+        private String subject;
+        private long issuedAt;
+        private Long expiresAt;
+        private boolean valid;
+        private String error;
+        
+        public String getTrustMarkJWT() {
+            return trustMarkJWT;
+        }
+        
+        public void setTrustMarkJWT(String trustMarkJWT) {
+            this.trustMarkJWT = trustMarkJWT;
+        }
+        
+        public String getTrustMarkId() {
+            return trustMarkId;
+        }
+        
+        public void setTrustMarkId(String trustMarkId) {
+            this.trustMarkId = trustMarkId;
+        }
+        
+        public String getIssuer() {
+            return issuer;
+        }
+        
+        public void setIssuer(String issuer) {
+            this.issuer = issuer;
+        }
+        
+        public String getSubject() {
+            return subject;
+        }
+        
+        public void setSubject(String subject) {
+            this.subject = subject;
+        }
+        
+        public long getIssuedAt() {
+            return issuedAt;
+        }
+        
+        public void setIssuedAt(long issuedAt) {
+            this.issuedAt = issuedAt;
+        }
+        
+        public Long getExpiresAt() {
+            return expiresAt;
+        }
+        
+        public void setExpiresAt(Long expiresAt) {
+            this.expiresAt = expiresAt;
+        }
+        
+        public boolean isValid() {
+            return valid;
+        }
+        
+        public void setValid(boolean valid) {
+            this.valid = valid;
+        }
+        
+        public String getError() {
+            return error;
+        }
+        
+        public void setError(String error) {
+            this.error = error;
+        }
+    }
+    
+    /**
      * Result of trust chain resolution
      */
     public static class TrustChainResult {

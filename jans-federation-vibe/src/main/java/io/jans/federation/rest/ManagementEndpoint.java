@@ -2,6 +2,8 @@ package io.jans.federation.rest;
 
 import io.jans.federation.model.EntityData;
 import io.jans.federation.model.EntityData.SubordinateEntity;
+import io.jans.federation.model.TrustMark;
+import io.jans.federation.service.TrustMarkService;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -305,6 +307,250 @@ public class ManagementEndpoint {
             sub, entityData.getEntityName());
         
         return Response.ok(statement).build();
+    }
+    
+    // ==================== Trust Mark Management ====================
+    
+    /**
+     * Issue a Trust Mark to an entity
+     * 
+     * POST /manage/trust-marks
+     * Body: {
+     *   "trust_mark_id": "https://refeds.org/sirtfi",
+     *   "subject": "https://op.umu.se",
+     *   "expires_in": 31536000  // Optional, seconds
+     * }
+     */
+    @POST
+    @Path("/trust-marks")
+    public Response issueTrustMark(Map<String, Object> request) {
+        String trustMarkId = (String) request.get("trust_mark_id");
+        String subject = (String) request.get("subject");
+        
+        if (trustMarkId == null || trustMarkId.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                .entity(Map.of("error", "trust_mark_id is required"))
+                .build();
+        }
+        
+        if (subject == null || subject.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                .entity(Map.of("error", "subject is required"))
+                .build();
+        }
+        
+        Long expiresIn = null;
+        if (request.containsKey("expires_in")) {
+            Object expiresInObj = request.get("expires_in");
+            if (expiresInObj instanceof Number) {
+                expiresIn = ((Number) expiresInObj).longValue();
+            }
+        }
+        
+        try {
+            String signedJWT = TrustMarkService.issueTrustMark(trustMarkId, subject, expiresIn);
+            
+            EntityData entityData = EntityData.getInstance();
+            logger.info("✓ Trust Mark issued: {} to {} by {}", 
+                trustMarkId, subject, entityData.getEntityId());
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "created");
+            response.put("trust_mark_id", trustMarkId);
+            response.put("issuer", entityData.getEntityId());
+            response.put("subject", subject);
+            response.put("signed_jwt", signedJWT);
+            
+            return Response.status(Response.Status.CREATED).entity(response).build();
+        } catch (Exception e) {
+            logger.error("Failed to issue Trust Mark", e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                .entity(Map.of("error", "Failed to issue Trust Mark: " + e.getMessage()))
+                .build();
+        }
+    }
+    
+    /**
+     * List all Trust Marks issued by this entity
+     * 
+     * GET /manage/trust-marks
+     */
+    @GET
+    @Path("/trust-marks")
+    public Response listTrustMarks() {
+        List<TrustMark> trustMarks = TrustMarkService.getIssuedTrustMarks();
+        
+        List<Map<String, Object>> response = trustMarks.stream()
+            .map(tm -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", tm.getId());
+                map.put("issuer", tm.getIssuer());
+                map.put("subject", tm.getSubject());
+                map.put("issued_at", tm.getIssuedAt());
+                map.put("expires_at", tm.getExpiresAt());
+                map.put("expired", tm.isExpired());
+                map.put("signed_jwt", tm.getSignedJWT());
+                return map;
+            })
+            .collect(Collectors.toList());
+        
+        EntityData entityData = EntityData.getInstance();
+        logger.info("Listed {} Trust Marks for entity: {}", response.size(), entityData.getEntityName());
+        
+        return Response.ok(response).build();
+    }
+    
+    /**
+     * Get a specific Trust Mark
+     * 
+     * GET /manage/trust-marks/{trustMarkId}
+     */
+    @GET
+    @Path("/trust-marks/{trustMarkId : .+}")
+    public Response getTrustMark(@PathParam("trustMarkId") String trustMarkId) {
+        TrustMark trustMark = TrustMarkService.getTrustMark(trustMarkId);
+        
+        if (trustMark == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                .entity(Map.of("error", "Trust Mark not found", "trust_mark_id", trustMarkId))
+                .build();
+        }
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", trustMark.getId());
+        response.put("issuer", trustMark.getIssuer());
+        response.put("subject", trustMark.getSubject());
+        response.put("issued_at", trustMark.getIssuedAt());
+        response.put("expires_at", trustMark.getExpiresAt());
+        response.put("expired", trustMark.isExpired());
+        response.put("signed_jwt", trustMark.getSignedJWT());
+        
+        return Response.ok(response).build();
+    }
+    
+    /**
+     * Revoke a Trust Mark (for issuer)
+     * 
+     * DELETE /manage/trust-marks/{trustMarkId}
+     */
+    @DELETE
+    @Path("/trust-marks/{trustMarkId : .+}")
+    public Response revokeTrustMark(@PathParam("trustMarkId") String trustMarkId) {
+        TrustMark trustMark = TrustMarkService.getTrustMark(trustMarkId);
+        
+        if (trustMark == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                .entity(Map.of("error", "Trust Mark not found", "trust_mark_id", trustMarkId))
+                .build();
+        }
+        
+        TrustMarkService.revokeTrustMark(trustMarkId);
+        
+        logger.info("✓ Trust Mark revoked: {}", trustMarkId);
+        
+        return Response.ok(Map.of(
+            "status", "revoked",
+            "trust_mark_id", trustMarkId
+        )).build();
+    }
+    
+    /**
+     * Add a received Trust Mark to this entity
+     * This is called by the subordinate entity after receiving a Trust Mark from a superior
+     * 
+     * POST /manage/entity/trust-marks
+     * Body: {
+     *   "signed_jwt": "eyJ..."  // The signed Trust Mark JWT
+     * }
+     */
+    @POST
+    @Path("/entity/trust-marks")
+    public Response addReceivedTrustMark(Map<String, Object> request) {
+        String signedJWT = (String) request.get("signed_jwt");
+        
+        if (signedJWT == null || signedJWT.isEmpty()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                .entity(Map.of("error", "signed_jwt is required"))
+                .build();
+        }
+        
+        try {
+            // Parse the Trust Mark JWT to extract claims
+            com.nimbusds.jwt.SignedJWT jwt = com.nimbusds.jwt.SignedJWT.parse(signedJWT);
+            com.nimbusds.jwt.JWTClaimsSet claimsSet = jwt.getJWTClaimsSet();
+            
+            String trustMarkId = claimsSet.getStringClaim("id");
+            String issuer = claimsSet.getIssuer();
+            String subject = claimsSet.getSubject();
+            long iat = claimsSet.getIssueTime() != null ? claimsSet.getIssueTime().getTime() / 1000 : 0;
+            Long exp = claimsSet.getExpirationTime() != null ? claimsSet.getExpirationTime().getTime() / 1000 : null;
+            
+            EntityData entityData = EntityData.getInstance();
+            
+            // Verify this Trust Mark is for THIS entity
+            if (!subject.equals(entityData.getEntityId())) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "Trust Mark subject does not match this entity",
+                        "expected", entityData.getEntityId(),
+                        "got", subject))
+                    .build();
+            }
+            
+            // Create and store Trust Mark
+            io.jans.federation.model.TrustMark trustMark = 
+                new io.jans.federation.model.TrustMark(trustMarkId, issuer, subject);
+            trustMark.setIssuedAt(iat);
+            trustMark.setExpiresAt(exp);
+            trustMark.setSignedJWT(signedJWT);
+            
+            entityData.addTrustMark(trustMark);
+            
+            logger.info("✓ Trust Mark added to entity: id={}, issuer={}, subject={}", 
+                trustMarkId, issuer, subject);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "added");
+            response.put("trust_mark_id", trustMarkId);
+            response.put("issuer", issuer);
+            response.put("subject", subject);
+            
+            return Response.status(Response.Status.CREATED).entity(response).build();
+            
+        } catch (Exception e) {
+            logger.error("Failed to parse Trust Mark JWT", e);
+            return Response.status(Response.Status.BAD_REQUEST)
+                .entity(Map.of("error", "Invalid Trust Mark JWT: " + e.getMessage()))
+                .build();
+        }
+    }
+    
+    /**
+     * List Trust Marks that this entity has received (about itself)
+     * 
+     * GET /manage/entity/trust-marks
+     */
+    @GET
+    @Path("/entity/trust-marks")
+    public Response listEntityTrustMarks() {
+        EntityData entityData = EntityData.getInstance();
+        
+        List<Map<String, Object>> response = entityData.getTrustMarks().stream()
+            .filter(tm -> tm.getSubject().equals(entityData.getEntityId()))
+            .map(tm -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("id", tm.getId());
+                map.put("issuer", tm.getIssuer());
+                map.put("issued_at", tm.getIssuedAt());
+                map.put("expires_at", tm.getExpiresAt());
+                map.put("expired", tm.isExpired());
+                map.put("signed_jwt", tm.getSignedJWT());
+                return map;
+            })
+            .collect(Collectors.toList());
+        
+        logger.info("Listed {} Trust Marks for entity: {}", response.size(), entityData.getEntityName());
+        
+        return Response.ok(response).build();
     }
     
     // Helper methods
